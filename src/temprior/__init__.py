@@ -22,7 +22,7 @@ from .uncertainty import (
 )
 from .data import default_prior, make_calibrated_prior, make_example_outbreak
 
-__version__ = "0.1.0rc2"
+__version__ = "0.1.0rc3"
 
 __all__ = [
     "FeatureSpec",
