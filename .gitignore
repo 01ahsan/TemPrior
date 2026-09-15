@@ -1,0 +1,16 @@
+__pycache__/
+*.egg-info/
+*.pyc
+build/
+dist/
+.pytest_cache/
+.venv/
+venv/
+.env
+.env.*
+*.pem
+*.key
+secrets/
+private_data/
+private_results/
+locked_prior*.json

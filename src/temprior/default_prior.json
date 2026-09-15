@@ -1,0 +1,27 @@
+{
+  "coef": [
+    0.11248285322359397,
+    -0.0027434842249657062,
+    0.0,
+    -0.04
+  ],
+  "intercept": -1.1529492455418382,
+  "feature_names": [
+    "dt",
+    "dt_sq",
+    "log_abs_dt",
+    "neg_gap"
+  ],
+  "spec": {
+    "window_edges": [
+      1.0,
+      10.0,
+      20.0,
+      30.0,
+      45.0,
+      60.0
+    ],
+    "include_window_indicators": false
+  },
+  "locked": true
+}
