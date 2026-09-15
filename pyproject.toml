@@ -9,7 +9,7 @@ description = "A transferable learned temporal prior for outbreak transmission r
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
-authors = [{ name = "Anichur Rahman" }]
+authors = [{ name = "Md Ahsan Karim" }]
 keywords = ["epidemiology", "outbreak", "transmission", "phylodynamics", "contact-tracing"]
 classifiers = [
     "Development Status :: 4 - Beta",
