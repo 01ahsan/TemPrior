@@ -3,7 +3,7 @@
 Contributions are welcome. To get started:
 
 ```bash
-Clone the repository using the private remote supplied by the project owner.
+git clone https://github.com/01ahsan/TemPrior.git
 cd TemPrior
 pip install -e ".[test]"
 pytest -q

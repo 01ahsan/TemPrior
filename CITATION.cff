@@ -7,6 +7,8 @@ authors:
 version: 0.1.0
 date-released: "2026-09-15"
 license: MIT
+repository-code: "https://github.com/01ahsan/TemPrior"
+url: "https://github.com/01ahsan/TemPrior"
 keywords:
   - epidemiology
   - outbreak

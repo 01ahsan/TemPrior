@@ -206,4 +206,8 @@ If you use TemPrior in your research, please cite:
 
 *Update to the peer-reviewed reference on journal publication.*
 
+## License
+
+MIT. Copyright (c) 2026 Md Ahsan Karim. See [LICENSE](LICENSE).
+
 ---
