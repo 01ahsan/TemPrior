@@ -11,11 +11,6 @@
 [![arXiv](https://img.shields.io/badge/arXiv-2606.30842-b31b1b.svg)](https://arxiv.org/abs/2606.30842)
 [![Live demo](https://img.shields.io/badge/demo-run%20in%20browser-2bb597.svg)](https://01ahsan.github.io/TemPrior)
 
-<br>
-
-![TemPrior: a learned temporal prior, and its accuracy on real Andes-virus outbreak data](assets/hero.png)
-
-</div>
 
 At the start of an outbreak, contact tracers need to know who infected whom — but genome sequencing takes days and needs multiple high-quality sequences per case, which are often unavailable. TemPrior recovers the transmission chain from case **timing** alone.
 
