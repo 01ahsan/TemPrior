@@ -2,40 +2,39 @@
 
 # TemPrior
 
-**Temporal prior for outbreak transmission reconstruction — zero-shot, uncertainty-aware, instantly deployable**
+**Infer who-infected-whom in an outbreak from symptom-onset timing — no genome sequencing required.**
 
-[![Tests](https://github.com/01ahsan/temprior/actions/workflows/ci.yml/badge.svg)](https://github.com/01ahsan/temprior/actions)
-[![PyPI version](https://img.shields.io/pypi/v/temprior.svg)](https://pypi.org/project/temprior/)
-[![Python 3.9+](https://img.shields.io/pypi/pyversions/temprior.svg)](https://pypi.org/project/temprior/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/temprior.svg?color=12876e)](https://pypi.org/project/temprior/)
+[![Python](https://img.shields.io/pypi/pyversions/temprior.svg?color=12876e)](https://pypi.org/project/temprior/)
+[![Tests](https://github.com/01ahsan/TemPrior/actions/workflows/ci.yml/badge.svg)](https://github.com/01ahsan/TemPrior/actions)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![arXiv](https://img.shields.io/badge/arXiv-2606.30842-b31b1b.svg)](https://arxiv.org/abs/2606.30842)
-[![Try it live »](https://img.shields.io/badge/demo-Try%20it%20live-brightgreen)](https://01ahsan.github.io/temprior)
+[![Live demo](https://img.shields.io/badge/demo-run%20in%20browser-2bb597.svg)](https://01ahsan.github.io/TemPrior)
+
+<br>
+
+![TemPrior: a learned temporal prior, and its accuracy on real Andes-virus outbreak data](assets/hero.png)
 
 </div>
 
----
+At the start of an outbreak, contact tracers need to know who infected whom — but genome sequencing takes days and needs multiple high-quality sequences per case, which are often unavailable. TemPrior recovers the transmission chain from case **timing** alone.
 
-When an outbreak begins, genomic sequencing takes days and phylodynamic pipelines need multiple high-quality sequences per case. **TemPrior answers *"who infected whom?"* from symptom-onset timing alone — in seconds, on any machine, with no sequences required.**
+The method learns a temporal prior over serial intervals from many past outbreaks, **locks it before it ever sees the target outbreak**, and ranks each case's most likely infector zero-shot. Unlike parametric serial-interval methods, it is not committed to a Gaussian or Gamma shape; and unlike most reconstruction tools, it treats epidemiological links as what they are — uncertain — and quantifies how that uncertainty shifts the cases you would prioritise for isolation.
 
-It learns a flexible temporal prior from multi-disease outbreak data, **locks it before seeing any target outbreak**, and ranks each case's most likely infectors zero-shot. It also makes explicit what most transmission-reconstruction tools ignore: real epidemiological labels are frequently uncertain, and that uncertainty changes which cases public-health teams would prioritize for isolation and contact tracing.
+**→ [Try it in your browser](https://01ahsan.github.io/TemPrior)** — reconstruct an outbreak live, drag cases to re-time them, upload your own line list. Nothing leaves the page.
 
-> **Reference paper:** Karim, M. A. (2026). *A Transferable Learned Temporal Prior for Transmission Reconstruction and Decision-Relevant Uncertainty in Real Outbreak Labels.* arXiv:2606.30842 · [PDF](https://arxiv.org/pdf/2606.30842)
+## Results
 
----
+On real Andes-virus (ANDV) outbreak data, the locked prior ranks the true infector first-or-near-first far more often than any serial-interval baseline fit to the same source data:
 
-## Why TemPrior
+| Method | MRR | Top-1 | Top-3 |
+| :-- | :-- | :-- | :-- |
+| **TemPrior** | **0.571** | **0.379** | **0.759** |
+| Gaussian | 0.274 | 0.138 | 0.207 |
+| Gamma | 0.237 | 0.103 | 0.172 |
+| KDE / Lognormal | 0.236 | 0.103 | 0.172 |
 
-| | Standard parametric methods | TemPrior |
-|---|---|---|
-| Distribution assumption | Hand-specified (Gaussian / Gamma / Lognormal) | Learned from multi-disease data |
-| Refits to target disease? | No | No — locked before any target data is seen |
-| Handles label uncertainty? | No — labels treated as ground truth | Yes — strict / preferred / plausible / unresolved tiers |
-| Decision-instability analysis | No | Yes — shows which top-*k* priorities shift under uncertainty |
-| Sequences required? | No | No |
-
-On real Andes virus (ANDV) outbreak data, TemPrior achieves **MRR 0.571 vs 0.274 for Gaussian** (permutation *p* ≤ 0.0002), identifying the true infector in the top 3 candidates for 76% of cases. The advantage is concentrated in the 16–40 day serial-gap regime where parametric models systematically underperform.
-
----
+The improvement is significant under permutation (*p* ≤ 0.0002) and robust to leave-one-out perturbation. It is also **regime-specific by design**: the advantage concentrates in the 16–40 day serial-gap window that fixed parametric priors systematically underweight. In short-gap settings (household COVID-19, ~3–5 days) a fitted Gaussian is competitive, and TemPrior does not claim otherwise.
 
 ## Install
 
@@ -43,171 +42,102 @@ On real Andes virus (ANDV) outbreak data, TemPrior achieves **MRR 0.571 vs 0.274
 pip install temprior
 ```
 
-Requires Python ≥ 3.9. No C extensions; pure Python with NumPy / SciPy / pandas / scikit-learn.
+Pure Python (NumPy / SciPy / pandas / scikit-learn), Python ≥ 3.9.
 
----
+## Usage
 
-## Quickstart — five minutes to first result
-
-### 1. Rank candidate infectors from a line list
+Rank candidate infectors for every case in a line list:
 
 ```python
 import temprior as tp
 
-# Load your data (or use the built-in synthetic example)
-linelist, edges = tp.make_example_outbreak()
-
-# Build ranking tasks: every case ranked against admissible earlier cases
-benchmark = tp.build_benchmark(linelist, edges, w_min=1, w_max=60)
-
-# Rank with the learned prior
+linelist, edges = tp.make_example_outbreak()          # or your own DataFrames
+benchmark = tp.build_benchmark(linelist, edges)       # Algorithm 1
 prior = tp.default_prior()
+
 for task in benchmark[:3]:
-    ranked = tp.rank_candidates(prior, task.gaps, task.candidates)
-    top = ranked[0]
-    print(f"Case {task.target}: top candidate = {top[0]}  score = {top[1]:.3f}")
+    infector, plausibility, _ = tp.rank_candidates(prior, task.gaps, task.candidates)[0]
+    print(f"case {task.target}: most likely infector = case {infector} ({plausibility:.2f})")
 ```
 
-### 2. Benchmark the prior against fair parametric baselines
+Score the prior against fair, source-trained baselines:
 
 ```python
-source_gaps = [g for t in benchmark for g, c
-               in zip(t.gaps, t.candidates) if c == t.true_parent]
-scorers = {"TemPrior": prior, **tp.fit_baselines(source_gaps)}
-
-for name, scorer in scorers.items():
-    r = tp.evaluate(scorer, benchmark).as_dict()
-    print(f"{name:12s}  MRR={r['MRR']}  Top-1={r['Top-1']}  Top-3={r['Top-3']}")
+scores = {"TemPrior": prior, **tp.fit_baselines(source_gaps)}
+for name, s in scores.items():
+    print(name, tp.evaluate(s, benchmark).as_dict())
 ```
 
-### 3. Quantify label uncertainty and decision instability
+Quantify label uncertainty and its effect on triage decisions:
 
 ```python
-# Categorize transmission labels by confidence
 cats = tp.categorize_labels(edges["confidence"].tolist())
-print(f"Unresolved fraction: {cats['unresolved_fraction']:.1%}")
-
-# Compare strict vs uncertainty-aware top-5 isolation shortlist
-strict = list(zip(edges.loc[edges.confidence >= .8, "parent_id"],
-                  edges.loc[edges.confidence >= .8, "child_id"]))
-aware  = list(zip(edges.loc[edges.confidence >= .4, "parent_id"],
-                  edges.loc[edges.confidence >= .4, "child_id"]))
-
-exp  = tp.expand_edges(strict, aware)
-inst = tp.decision_instability(exp.strict_offspring, exp.aware_offspring, k=5)
-print(f"Top-5 Jaccard:       {inst.jaccard:.3f}")
-print(f"Decision regret:     {inst.decision_regret:.1%}")
-print(f"Newly elevated:      {inst.newly_elevated}")
+inst = tp.decision_instability(*tp.expand_edges(strict_edges, plausible_edges), k=5)
+print(cats["unresolved_fraction"], inst.jaccard, inst.decision_regret)
 ```
 
-### 4. CLI — run from the terminal on your own CSV files
+Or from the command line, on your own CSVs:
 
 ```bash
-# Rank candidate infectors and write results
-temprior rank --linelist cases.csv --edges edges.csv --out ranked.csv
-
-# Benchmark prior vs all baselines, print table
-temprior evaluate --linelist cases.csv --edges edges.csv
-
-# Label uncertainty + top-k decision instability
+temprior rank        --linelist cases.csv --edges edges.csv --out ranked.csv
+temprior evaluate    --linelist cases.csv --edges edges.csv
 temprior uncertainty --edges edges.csv --k 5
 ```
 
----
+## Data format
 
-## Input format
+A **line list** — one row per case, `onset` as a day number or a date:
 
-**Line list** (`cases.csv`):
-
-| `case_id` | `onset` |
-|-----------|---------|
-| P1 | 2024-01-03 |
-| P2 | 2024-01-26 |
-
-`onset` can be a date string or a numeric day. Missing onsets are skipped.
-
-**Edges** (`edges.csv`):
-
-| `parent_id` | `child_id` | `high_confidence` | `confidence` |
-|-------------|------------|-------------------|--------------|
-| P1 | P2 | True | 0.91 |
-
-`high_confidence` and `confidence` are optional. `temprior rank` works with no edges file at all — it ranks every case against all admissible earlier cases.
-
----
-
-## When to use TemPrior
-
-**Use TemPrior when:** genomic data is absent, delayed, or inconclusive (common for hantaviruses and other pathogens with low within-host diversity); an immediate ranking is needed in the first 24–48 hours of a response; or you want to quantify how label uncertainty affects intervention prioritization.
-
-**Use genomic methods (outbreaker2, JUNIPER, BREATH) when:** multiple high-quality sequences per case are available with sufficient within-host diversity and there is time to run the pipeline. These are complementary regimes, not competing tools.
-
-**TemPrior's advantage is concentrated in the 16–40 day serial-gap regime.** In short-gap settings (< 10 days, e.g. COVID-19 household clusters), parametric baselines remain competitive.
-
----
-
-## Bringing your own locked prior
-
-The bundled `default_prior()` approximates the published prior shape (peak ~20.5 days, 80% support ~3–38 days). To use your own trained weights:
-
-```python
-# Train on your source data
-prior = tp.TemporalPrior()
-prior.fit(source_gaps, labels)
-prior.lock()            # enforces zero-shot protocol in code — fit() will raise after this
-prior.save("my_prior.json")
-
-# Load anywhere, no scikit-learn needed at inference time
-prior = tp.TemporalPrior.load("my_prior.json")
+```
+case_id,onset
+P1,2024-01-03
+P2,2024-01-26
 ```
 
----
+An **edge list** — the documented links, with an optional confidence in `[0,1]`:
 
-## Correspondence to the paper
+```
+parent_id,child_id,confidence
+P1,P2,0.91
+```
+
+Edges are optional: `temprior rank` will otherwise score every case against all admissible earlier cases.
+
+## How it works
+
+Each ordered pair of cases becomes a candidate transmission with a signed onset gap. A logistic model over gap features scores each candidate; trained by leave-one-disease-out across a multi-disease benchmark, its shape is nearly invariant to which disease is held out (mean cross-fold correlation 0.99), which is why it transfers. The prior is then frozen — `fit()` raises on a locked prior — so evaluation on a new outbreak is genuinely zero-shot, never refit to the target. Uncertainty is handled separately: documented links are graded strict → plausible, and the top-*k* source shortlist is recomputed under each grade to measure how many priority decisions actually change.
 
 | Module | Paper element |
-|--------|--------------|
+| :-- | :-- |
 | `benchmark.py` | Algorithm 1 — candidate-infector benchmark construction |
 | `prior.py` | Learned temporal prior; locking protocol |
-| `evaluate.py` | Algorithm 2 (Phase 2) — MRR / Top-k / NDCG evaluation |
+| `evaluate.py` | Algorithm 2 — MRR / Top-*k* / NDCG evaluation |
 | `baselines.py` | Fair source-trained Gaussian / KDE / Gamma / Lognormal |
-| `uncertainty.py` | Label categories, edge expansion, top-k decision instability |
+| `uncertainty.py` | Label grading, edge expansion, top-*k* decision instability |
 
----
+## Using your own locked prior
 
-## Development
+The bundled `default_prior()` reproduces the published prior's *shape*; the exact study weights reproduce the numbers above. To train and lock your own:
 
-```bash
-git clone https://github.com/01ahsan/temprior
-cd temprior
-pip install -e ".[test]"
-pytest -q          # 8 tests, < 5 seconds
+```python
+prior = tp.TemporalPrior().fit(source_gaps, labels)
+prior.lock()                      # zero-shot protocol, enforced in code
+prior.save("prior.json")          # reload anywhere, no scikit-learn needed at inference
 ```
-
-Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Please open an issue before large changes.
-
----
 
 ## Citation
 
-If you use TemPrior in your research, please cite:
-
 ```bibtex
-@misc{karim2026transferablelearnedtemporalprior,
-      title={A Transferable Learned Temporal Prior for Transmission Reconstruction and Decision-Relevant Uncertainty in Real Outbreak Labels}, 
-      author={Md Ahsan Karim},
-      year={2026},
-      eprint={2606.30842},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2606.30842}, 
+@misc{karim2026temprior,
+  title  = {A Transferable Learned Temporal Prior for Transmission Reconstruction
+            and Decision-Relevant Uncertainty in Real Outbreak Labels},
+  author = {Karim, Md Ahsan},
+  year   = {2026},
+  eprint = {2606.30842},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  url    = {https://arxiv.org/abs/2606.30842}
 }
 ```
 
-*Update to the peer-reviewed reference on journal publication.*
-
-## License
-
-MIT. Copyright (c) 2026 Md Ahsan Karim. See [LICENSE](LICENSE).
-
----
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Licensed MIT © 2026 Md Ahsan Karim.
