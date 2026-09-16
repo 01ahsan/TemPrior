@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TemPrior — live transmission reconstruction</title>
+<meta name="description" content="Reconstruct who infected whom from outbreak timing alone. Drag cases, edit the outbreak, watch the inference update. Runs entirely in your browser.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#e9eef0; --panel:#ffffff; --ink:#13272d; --muted:#5f7178; --faint:#8a9aa0;
+    --line:#d3dde0; --line-soft:#e7edef;
+    --teal:#12876e; --teal-deep:#0c5f4e; --amber:#cf941f; --coral:#cd4a2a; --violet:#6155b8;
+    --shadow:0 1px 2px rgba(19,39,45,.04), 0 10px 28px rgba(19,39,45,.06);
+    --anim:1;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0e1618; --panel:#152023; --ink:#e7eef0; --muted:#9fb0b5; --faint:#6b7d82;
+      --line:#26363a; --line-soft:#1d2a2d;
+      --teal:#2bb597; --teal-deep:#1a8f76; --amber:#e0a637; --coral:#e0623f; --violet:#8478e0;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 12px 34px rgba(0,0,0,.4);
+    }
+  }
+  @media (prefers-reduced-motion: reduce){ :root{ --anim:0 } * { animation:none !important; transition:none !important } }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif; font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased}
+  .num{font-variant-numeric:tabular-nums}
+  a{color:var(--teal-deep); text-underline-offset:2px}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) a{color:var(--teal)}}
+
+  header{display:flex; align-items:center; gap:20px; flex-wrap:wrap; padding:15px clamp(16px,4vw,44px); border-bottom:1px solid var(--line); background:var(--panel)}
+  .wordmark{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:21px; letter-spacing:-.02em; display:flex; align-items:center; gap:11px; color:var(--ink)}
+  .glyph{width:26px;height:26px;flex:none}
+  .tagline{color:var(--muted); font-size:14px; border-left:1px solid var(--line); padding-left:20px}
+  @media (max-width:660px){.tagline{display:none}}
+  .top-links{margin-left:auto; display:flex; gap:8px; align-items:center}
+  .top-links a{font-size:13px; font-weight:500; text-decoration:none; color:var(--muted); padding:7px 12px; border:1px solid var(--line); border-radius:7px; white-space:nowrap; transition:border-color .15s,color .15s}
+  .top-links a:hover{color:var(--ink); border-color:var(--faint)}
+  .top-links a.solid{background:var(--ink); color:var(--bg); border-color:var(--ink)}
+
+  main{max-width:1260px; margin:0 auto; padding:clamp(20px,4vw,38px) clamp(16px,4vw,44px) 70px}
+  .lede{max-width:72ch; margin:0 0 22px}
+  .lede h1{font-family:"Space Grotesk",sans-serif; font-weight:600; font-size:clamp(25px,4vw,38px); line-height:1.1; letter-spacing:-.02em; margin:0 0 12px}
+  .lede p{color:var(--muted); font-size:clamp(15px,2vw,17px); margin:0}
+  .lede .pill{display:inline-block; color:var(--teal-deep); background:color-mix(in srgb, var(--teal) 13%, transparent); border-radius:20px; padding:2px 11px; font-size:13px; font-weight:600; margin-bottom:14px}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .lede .pill{color:var(--teal)}}
+
+  .controls{display:flex; gap:9px; flex-wrap:wrap; align-items:center; margin:0 0 18px}
+  button.act,button.ghost{font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; padding:9px 15px; border-radius:8px; transition:filter .15s,transform .05s,border-color .15s,background .15s}
+  button.act{border:1px solid var(--teal-deep); background:var(--teal-deep); color:#fff}
+  button.act:hover{filter:brightness(1.08)} button.act:active{transform:translateY(1px)}
+  button.ghost{background:transparent; color:var(--ink); border:1px solid var(--line)}
+  button.ghost:hover{border-color:var(--faint)}
+  button.ghost.on{background:var(--ink); color:var(--bg); border-color:var(--ink)}
+  button:focus-visible{outline:2px solid var(--violet); outline-offset:2px}
+  .privacy{font-size:12.5px; color:var(--muted); display:flex; align-items:center; gap:6px; margin-left:auto}
+  .privacy svg{flex:none}
+
+  /* add-case editor */
+  .editor{display:none; gap:10px; flex-wrap:wrap; align-items:flex-end; padding:14px 16px; margin:0 0 18px; background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow)}
+  .editor.open{display:flex; animation:calc(var(--anim)*.32s) drop ease}
+  @keyframes drop{from{opacity:0; transform:translateY(-6px)}to{opacity:1;transform:none}}
+  .field{display:flex; flex-direction:column; gap:4px}
+  .field label{font-size:11.5px; color:var(--faint); font-weight:600}
+  .field input[type=number],.field select{font-family:inherit; font-size:14px; padding:7px 9px; border:1px solid var(--line); border-radius:7px; background:var(--bg); color:var(--ink); min-width:90px}
+  .field input[type=range]{width:120px}
+  .rngval{font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums}
+
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow)}
+  .panel h2{font-family:"Space Grotesk",sans-serif; font-weight:600; font-size:15px; margin:0; letter-spacing:-.01em}
+  .panel .sub{color:var(--faint); font-size:12.5px; margin:2px 0 0}
+  .phead{padding:14px 18px 11px; border-bottom:1px solid var(--line-soft); display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap}
+  .phead .tools{display:flex; align-items:center; gap:12px}
+  .phead .tools label{font-size:12px; color:var(--muted); display:flex; align-items:center; gap:7px}
+  .minibtn{font-family:inherit; font-size:12px; font-weight:600; cursor:pointer; padding:5px 10px; border-radius:6px; border:1px solid var(--line); background:transparent; color:var(--coral)}
+  .minibtn:hover{border-color:var(--coral)}
+
+  .stage{padding:6px 6px 2px; position:relative}
+  svg.viz{display:block; width:100%; height:auto; touch-action:none}
+  .legend{display:flex; gap:15px; flex-wrap:wrap; padding:6px 18px 14px; font-size:12px; color:var(--muted)}
+  .legend span{display:inline-flex; align-items:center; gap:6px}
+  .swatch{width:20px;height:3px;border-radius:2px;display:inline-block}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+
+  .grid{display:grid; grid-template-columns:1.05fr .95fr; gap:18px; margin-top:18px}
+  .col{display:flex; flex-direction:column; gap:18px}
+  @media (max-width:880px){.grid{grid-template-columns:1fr}}
+
+  .ranked{padding:8px 18px 16px}
+  .rrow{display:grid; grid-template-columns:20px 1fr auto; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--line-soft)}
+  .rrow:last-child{border-bottom:none}
+  .rrow.animrow{animation:calc(var(--anim)*.4s) fadeUp ease backwards}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .rk{font-size:12px; color:var(--faint); text-align:right}
+  .bar-label{display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px}
+  .bar-label .who{font-weight:500}
+  .bar-track{height:7px; background:var(--line-soft); border-radius:4px; overflow:hidden}
+  .bar-fill{height:100%; border-radius:4px; background:var(--teal); transition:width .4s cubic-bezier(.2,.7,.2,1)}
+  .score{font-size:12.5px; color:var(--muted); white-space:nowrap}
+  .truetag{font-size:10.5px; font-weight:600; color:var(--teal-deep); border:1px solid color-mix(in srgb,var(--teal) 40%,transparent); border-radius:4px; padding:1px 5px; margin-left:7px}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .truetag{color:var(--teal)}}
+  .hint{padding:22px 18px; color:var(--faint); font-size:13.5px; text-align:center}
+
+  .metrics{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line-soft); border-radius:10px; overflow:hidden; margin:14px 18px 16px}
+  .metric{background:var(--panel); padding:13px 14px}
+  .metric .v{font-family:"Space Grotesk",sans-serif; font-weight:600; font-size:22px; line-height:1}
+  .metric .k{font-size:11.5px; color:var(--muted); margin-top:5px}
+  .metric.win .v{color:var(--teal-deep)}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .metric.win .v{color:var(--teal)}}
+  .cmp{font-size:12.5px; color:var(--muted); padding:0 18px 16px; margin-top:-4px}
+  .cmp b{color:var(--ink); font-weight:600}
+
+  .ustack{display:flex; height:26px; border-radius:6px; overflow:hidden; margin:14px 18px 8px; border:1px solid var(--line-soft)}
+  .useg{display:flex; align-items:center; justify-content:center; font-size:11px; color:#fff; font-weight:600; min-width:0; transition:flex .4s ease}
+  .ukeys{display:grid; grid-template-columns:1fr 1fr; gap:6px 16px; padding:6px 18px 14px; font-size:12.5px}
+  .ukey{display:flex; align-items:center; gap:7px; color:var(--muted)}
+  .ukey .n{margin-left:auto; color:var(--ink); font-weight:600}
+  .decision{border-top:1px solid var(--line-soft); padding:14px 18px 4px}
+  .decision .drow{display:flex; justify-content:space-between; align-items:baseline; padding:5px 0; font-size:13.5px}
+  .decision .drow .dv{font-weight:600}
+  .shortlists{display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:8px 18px 18px}
+  .sl h4{margin:0 0 6px; font-size:12px; color:var(--faint); font-weight:600}
+  .chip{display:inline-block; font-size:12px; padding:3px 8px; border-radius:6px; margin:0 4px 4px 0; background:var(--line-soft); font-variant-numeric:tabular-nums}
+  .chip.new{background:color-mix(in srgb,var(--coral) 16%,transparent); color:var(--coral); font-weight:600}
+
+  /* tooltip */
+  #tip{position:fixed; pointer-events:none; z-index:50; background:var(--ink); color:var(--bg); font-size:12px; padding:7px 10px; border-radius:7px; opacity:0; transform:translateY(3px); transition:opacity .12s; max-width:220px; line-height:1.4; box-shadow:0 6px 20px rgba(0,0,0,.25)}
+  #tip.show{opacity:1; transform:none}
+  #tip b{font-weight:600}
+  #tip .k{color:var(--faint)}
+
+  /* svg node/edge interaction */
+  .node circle{cursor:grab; transition:r .12s}
+  .node.dragging circle{cursor:grabbing}
+  .edge{transition:opacity .2s}
+  .drawin{stroke-dasharray:var(--len); stroke-dashoffset:var(--len); animation:calc(var(--anim)*.7s) draw ease forwards}
+  @keyframes draw{to{stroke-dashoffset:0}}
+  .popin{animation:calc(var(--anim)*.4s) pop cubic-bezier(.2,1.4,.4,1) backwards}
+  @keyframes pop{from{transform:scale(0)}to{transform:scale(1)}}
+
+  footer{border-top:1px solid var(--line); background:var(--panel); padding:28px clamp(16px,4vw,44px)}
+  .foot-in{max-width:1260px; margin:0 auto; display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start; justify-content:space-between}
+  .install{background:var(--ink); color:var(--bg); padding:11px 15px; border-radius:8px; font-size:14px; display:inline-flex; gap:10px; align-items:center}
+  .install code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .copy{cursor:pointer; border:none; background:transparent; color:var(--bg); opacity:.6; font-size:12px; font-family:inherit}
+  .copy:hover{opacity:1}
+  .cite{font-size:12.5px; color:var(--muted); max-width:52ch}
+  .cite a{color:inherit}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+</style>
+</head>
+<body>
+<header>
+  <div class="wordmark">
+    <svg class="glyph" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+      <circle cx="8" cy="30" r="4" fill="var(--coral)"/><circle cx="20" cy="14" r="4" fill="var(--amber)"/><circle cx="32" cy="24" r="4" fill="var(--teal)"/>
+      <path d="M10.5 27.5 L17.5 16.5" stroke="var(--muted)" stroke-width="1.6"/><path d="M22.8 16.6 L29.2 21.6" stroke="var(--muted)" stroke-width="1.6"/>
+    </svg>TemPrior
+  </div>
+  <div class="tagline">who infected whom, from timing alone</div>
+  <nav class="top-links">
+    <a href="https://pypi.org/project/temprior/" target="_blank" rel="noopener">PyPI</a>
+    <a href="https://github.com/01ahsan/TemPrior" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://arxiv.org/abs/2606.30842" target="_blank" rel="noopener" class="solid">Paper</a>
+  </nav>
+</header>
+
+<main>
+  <div class="lede">
+    <span class="pill">Live · interactive · runs in your browser</span>
+    <h1>Reconstruct an outbreak's transmission chain from onset dates alone.</h1>
+    <p>TemPrior ranks each case's most likely infector using a temporal prior learned across many diseases and locked before it sees your data. Drag a case to re-time it, add new cases, or load your own line list — the inference updates live.</p>
+  </div>
+
+  <div class="controls">
+    <button class="act" id="loadExample">Load example outbreak</button>
+    <button class="ghost" id="addToggle">+ Add case</button>
+    <button class="ghost" id="uploadBtn">Upload CSV</button>
+    <input type="file" id="fileLine" accept=".csv" class="sr" aria-label="Line list CSV">
+    <input type="file" id="fileEdge" accept=".csv" class="sr" aria-label="Edges CSV">
+    <span class="privacy">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z"/></svg>
+      Your data never leaves this page
+    </span>
+  </div>
+
+  <div class="editor" id="editor">
+    <div class="field"><label for="edOnset">Onset day</label><input type="number" id="edOnset" value="120" min="0" step="1"></div>
+    <div class="field"><label for="edParent">Infected by (optional)</label><select id="edParent"><option value="">— none —</option></select></div>
+    <div class="field"><label for="edConf">Link confidence <span class="rngval" id="edConfV">0.80</span></label><input type="range" id="edConf" min="0" max="1" step="0.01" value="0.8"></div>
+    <button class="act" id="edAdd">Add to outbreak</button>
+    <button class="ghost" id="edCancel">Cancel</button>
+  </div>
+
+  <section class="panel" aria-labelledby="viz-h">
+    <div class="phead">
+      <div><h2 id="viz-h">Transmission timeline</h2>
+      <p class="sub" id="viz-sub">Each dot is a case, placed by onset day. Click to inspect, drag to re-time.</p></div>
+      <div class="tools">
+        <label>show links ≥ <input type="range" id="filter" min="0" max="1" step="0.05" value="0"> <span class="num" id="filterV">0.00</span></label>
+      </div>
+    </div>
+    <div class="stage"><svg class="viz" id="timeline" role="img" aria-label="Transmission timeline"></svg></div>
+    <div class="legend">
+      <span><span class="swatch" style="background:var(--teal)"></span>high-confidence link</span>
+      <span><span class="swatch" style="background:var(--amber)"></span>uncertain link</span>
+      <span><span class="swatch" style="background:var(--coral)"></span>weak / unresolved</span>
+      <span><span class="dot" style="background:var(--violet)"></span>selected case</span>
+      <span><span class="swatch" style="background:none;border-top:2px dashed var(--violet);height:0"></span>TemPrior's top inference</span>
+    </div>
+  </section>
+
+  <div class="grid">
+    <div class="col">
+      <section class="panel" aria-labelledby="rank-h">
+        <div class="phead">
+          <div><h2 id="rank-h">Candidate infectors</h2><p class="sub" id="rank-sub">Select a case in the timeline.</p></div>
+          <button class="minibtn" id="removeBtn" style="display:none">Remove case</button>
+        </div>
+        <div id="ranked" class="ranked"><p class="hint">Click a case above to see who TemPrior thinks infected it.</p></div>
+      </section>
+      <section class="panel" aria-labelledby="curve-h">
+        <div class="phead"><div><h2 id="curve-h">The learned prior</h2><p class="sub">Plausibility of transmission by the gap between two onsets.</p></div></div>
+        <div class="stage"><svg class="viz" id="curve" role="img" aria-label="Learned temporal prior curve"></svg></div>
+      </section>
+    </div>
+    <div class="col">
+      <section class="panel" aria-labelledby="met-h">
+        <div class="phead"><div><h2 id="met-h">Ranking accuracy on this outbreak</h2><p class="sub">TemPrior scored against every documented link.</p></div></div>
+        <div class="metrics" id="metrics"></div>
+        <p class="cmp" id="cmp"></p>
+      </section>
+      <section class="panel" aria-labelledby="unc-h">
+        <div class="phead"><div><h2 id="unc-h">Label uncertainty &amp; decisions</h2><p class="sub">How confident are the links — and does it change who you'd prioritize?</p></div></div>
+        <div class="ustack" id="ustack"></div>
+        <div class="ukeys" id="ukeys"></div>
+        <div class="decision">
+          <div class="drow"><span>Top-5 shortlist overlap (strict vs. uncertainty-aware)</span><span class="dv num" id="jac">—</span></div>
+          <div class="drow"><span>Decision regret if you trust strict links only</span><span class="dv num" id="reg">—</span></div>
+        </div>
+        <div class="shortlists">
+          <div class="sl"><h4>Strict top-5 sources</h4><div id="slStrict"></div></div>
+          <div class="sl"><h4>Uncertainty-aware top-5</h4><div id="slAware"></div></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-in">
+    <div>
+      <div class="install"><code>pip install temprior</code><button class="copy" id="copyPip">copy</button></div>
+      <p class="cite" style="margin-top:14px">Method: <a href="https://arxiv.org/abs/2606.30842" target="_blank" rel="noopener">A Transferable Learned Temporal Prior for Transmission Reconstruction and Decision-Relevant Uncertainty in Real Outbreak Labels</a>. This demo uses an approximate prior; the published weights reproduce the paper's results.</p>
+    </div>
+    <p class="cite">Reference implementation of the method.<br>Open source under the MIT license.</p>
+  </div>
+</footer>
+<div id="tip" role="tooltip"></div>
+
+<script>
+"use strict";
+const COEF=[0.11248285322359397,-0.0027434842249657062,0.0,-0.04], INTERCEPT=-1.1529492455418382;
+function score(dt){const z=COEF[0]*dt+COEF[1]*dt*dt+COEF[2]*Math.log(Math.abs(dt)+1)+COEF[3]*(dt<0?1:0)+INTERCEPT;return 1/(1+Math.exp(-Math.max(-30,Math.min(30,z))));}
+const W_MIN=1,W_MAX=60;
+const EX_LL=[[0,0],[1,22],[2,41.8],[3,56.7],[4,14.1],[5,44.5],[6,59.9],[7,61.5],[8,84.8],[9,64.6],[10,86.4],[11,41.7],[12,78.2],[13,85],[14,67.2],[15,87.3],[16,91.4],[17,101.5],[18,65.5],[19,102.7],[20,124.4],[21,101.2],[22,90.4],[23,99.2],[24,129.7],[25,116.7],[26,131.8],[27,104.6],[28,113.3],[29,146.9],[30,169.5],[31,179.8],[32,145.6],[33,113.4],[34,184.9],[35,141.5],[36,139.3],[37,143.3],[38,140.8],[39,134.8]];
+const EX_ED=[[0,1,0.973],[1,2,0.666],[2,3,0.678],[0,4,0.704],[1,5,0.734],[2,6,0.319],[5,7,0.548],[6,8,0.389],[2,9,0.518],[9,10,0.276],[4,11,0.965],[6,12,0.37],[12,13,0.731],[6,14,0.437],[14,15,0.891],[14,16,0.723],[12,17,0.304],[7,18,0.868],[13,19,0.947],[17,20,0.914],[16,21,0.65],[14,22,0.315],[13,23,0.352],[23,24,0.933],[21,25,0.636],[19,26,0.343],[15,27,0.898],[22,28,0.707],[20,29,0.65],[29,30,0.497],[29,31,0.525],[25,32,0.389],[22,33,0.23],[29,34,0.892],[33,35,0.57],[25,36,0.633],[25,37,0.455],[28,38,0.794],[28,39,0.22]];
+
+const S={onset:{},ids:[],edges:[],parentOf:{},selected:null,lane:{},filter:0,animate:true};
+const reduced=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function loadData(ll,ed,animate){
+  S.onset={};S.ids=[];S.parentOf={};S.edges=[];S.selected=null;
+  ll.forEach(r=>{S.onset[r[0]]=+r[1];S.ids.push(r[0]);});
+  ed.forEach(r=>{const conf=(r[2]==null||isNaN(+r[2]))?1:+r[2];S.edges.push({p:r[0],c:r[1],conf});S.parentOf[r[1]]=r[0];});
+  S.ids.sort((a,b)=>S.onset[a]-S.onset[b]);
+  relayout(); S.animate=animate&&!reduced; renderAll(); S.animate=false;
+  refreshParentOptions();
+}
+function relayout(){
+  const W=1200,padL=46,padR=24; const maxO=Math.max(1,...S.ids.map(i=>S.onset[i]));
+  const xOf=o=>padL+(o/maxO)*(W-padL-padR); const minGap=22; const lanes=[]; S.lane={};
+  S.ids.slice().sort((a,b)=>S.onset[a]-S.onset[b]).forEach(i=>{
+    const x=xOf(S.onset[i]); let placed=-1;
+    for(let L=0;L<lanes.length;L++){if(x-lanes[L]>=minGap){lanes[L]=x;placed=L;break;}}
+    if(placed<0){lanes.push(x);placed=lanes.length-1;}
+    S.lane[i]=placed;
+  });
+  S.nLanes=Math.max(1,lanes.length);
+}
+function candidates(child){const dc=S.onset[child];if(dc==null)return[];const out=[];
+  for(const i of S.ids){if(i===child)continue;const di=S.onset[i];if(di==null)continue;const g=dc-di;if(g>=W_MIN&&g<=W_MAX)out.push({id:i,gap:g,score:score(g)});}
+  out.sort((a,b)=>b.score-a.score);return out;}
+function tasks(){const T=[];for(const c of S.ids){const p=S.parentOf[c];if(p==null)continue;const dc=S.onset[c],dp=S.onset[p];if(dc==null||dp==null)continue;const g=dc-dp;if(g<W_MIN||g>W_MAX)continue;const cand=candidates(c);if(cand.length<2)continue;if(!cand.some(x=>x.id===p))continue;T.push({child:c,parent:p,cand});}return T;}
+function rankOfParent(cand,parent){const sp=cand.find(x=>x.id===parent).score;let gt=0,eq=0;cand.forEach(x=>{if(x.score>sp)gt++;else if(x.score===sp)eq++;});return gt+(eq+1)/2;}
+function evaluate(fn){const T=tasks();if(!T.length)return null;let mrr=0,t1=0,t3=0,t5=0;T.forEach(t=>{const c=t.cand.map(x=>({id:x.id,score:fn(x.gap)})).sort((a,b)=>b.score-a.score);const r=rankOfParent(c,t.parent);mrr+=1/r;if(r<=1)t1++;if(r<=3)t3++;if(r<=5)t5++;});const n=T.length;return{n,mrr:mrr/n,t1:t1/n,t3:t3/n,t5:t5/n};}
+function gaussianScorer(){const g=[];for(const c of S.ids){const p=S.parentOf[c];if(p==null)continue;const d=S.onset[c]-S.onset[p];if(d>=W_MIN&&d<=W_MAX)g.push(d);}if(g.length<2)return null;const mu=g.reduce((a,b)=>a+b,0)/g.length;const sd=Math.sqrt(g.reduce((a,b)=>a+(b-mu)**2,0)/(g.length-1))||1;return dt=>Math.exp(-((dt-mu)**2)/(2*sd*sd));}
+
+function lerp(a,b,t){return a+(b-a)*t;}
+function hex(c){return '#'+c.map(v=>Math.round(v).toString(16).padStart(2,'0')).join('');}
+function conf2color(cf){const coral=[205,74,42],amber=[207,148,31],teal=[18,135,110];let r;if(cf<.5){const t=cf/.5;r=[lerp(coral[0],amber[0],t),lerp(coral[1],amber[1],t),lerp(coral[2],amber[2],t)];}else{const t=(cf-.5)/.5;r=[lerp(amber[0],teal[0],t),lerp(amber[1],teal[1],t),lerp(amber[2],teal[2],t)];}return hex(r);}
+const NS="http://www.w3.org/2000/svg";
+function el(t,a){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e;}
+
+let VB={W:1200,padL:46,padR:24,padT:30,padB:42,H:300};
+function xOf(o){const maxO=Math.max(1,...S.ids.map(i=>S.onset[i]));return VB.padL+(o/maxO)*(VB.W-VB.padL-VB.padR);}
+function yOf(i){return VB.padT+S.lane[i]*30+8;}
+
+function renderTimeline(){
+  const svg=document.getElementById('timeline');svg.innerHTML='';
+  const laneH=30; VB.H=VB.padT+S.nLanes*laneH+VB.padB;
+  svg.setAttribute('viewBox',`0 0 ${VB.W} ${VB.H}`);
+  const maxO=Math.max(1,...S.ids.map(i=>S.onset[i]));
+  // background click = deselect
+  const bg=el('rect',{x:0,y:0,width:VB.W,height:VB.H,fill:'transparent'});bg.addEventListener('click',()=>select(null));svg.appendChild(bg);
+  // epi-curve (onset histogram) behind
+  const nb=20,bins=new Array(nb).fill(0);S.ids.forEach(i=>{const b=Math.min(nb-1,Math.floor(S.onset[i]/maxO*nb));bins[b]++;});const mx=Math.max(...bins,1);const axisY=VB.H-VB.padB+14;
+  bins.forEach((v,b)=>{if(!v)return;const x0=VB.padL+(b/nb)*(VB.W-VB.padL-VB.padR),bw=(1/nb)*(VB.W-VB.padL-VB.padR);const h=(v/mx)*22;svg.appendChild(el('rect',{x:x0+1,y:axisY-h,width:bw-2,height:h,fill:'var(--teal)',opacity:.06,rx:1}));});
+  // axis
+  svg.appendChild(el('line',{x1:VB.padL,y1:axisY,x2:VB.W-VB.padR,y2:axisY,stroke:'var(--line)','stroke-width':1}));
+  const step=maxO>150?30:(maxO>60?20:10);
+  for(let d=0;d<=maxO;d+=step){const x=xOf(d);svg.appendChild(el('line',{x1:x,y1:axisY,x2:x,y2:axisY+5,stroke:'var(--faint)','stroke-width':1}));const t=el('text',{x,y:axisY+18,'text-anchor':'middle','font-size':11,fill:'var(--faint)'});t.textContent='day '+d;svg.appendChild(t);}
+  // precompute selection helpers ONCE
+  const sel=S.selected; const selCand=sel!=null?candidates(sel):null; const selTop=selCand&&selCand.length?selCand[0].id:null; const selPar=sel!=null?S.parentOf[sel]:null;
+  // edges
+  let ei=0;
+  S.edges.forEach(e=>{
+    if(e.conf<S.filter)return;
+    if(S.onset[e.p]==null||S.onset[e.c]==null)return;
+    const a={x:xOf(S.onset[e.p]),y:yOf(e.p)},b={x:xOf(S.onset[e.c]),y:yOf(e.c)};
+    const my=(a.y+b.y)/2-Math.min(42,Math.abs(b.x-a.x)*.28);
+    const dim=sel!=null&&!(e.p===sel||e.c===sel);
+    const p=el('path',{class:'edge',d:`M${a.x},${a.y} Q${(a.x+b.x)/2},${my} ${b.x},${b.y}`,fill:'none',stroke:conf2color(e.conf),'stroke-width':dim?1:1.8,opacity:dim?.1:.62,'stroke-linecap':'round'});
+    if(S.animate){const len=Math.hypot(b.x-a.x,b.y-a.y)+60;p.classList.add('drawin');p.style.setProperty('--len',len);p.style.animationDelay=(ei*12)+'ms';}
+    p.addEventListener('pointerenter',ev=>showTip(ev,`<b>case ${e.p} → case ${e.c}</b><br><span class="k">link confidence</span> ${e.conf.toFixed(2)}<br><span class="k">gap</span> ${(S.onset[e.c]-S.onset[e.p]).toFixed(1)} d`));
+    p.addEventListener('pointermove',moveTip); p.addEventListener('pointerleave',hideTip);
+    svg.appendChild(p);ei++;
+  });
+  // inferred top edge for selection
+  if(sel!=null&&selTop!=null){const a={x:xOf(S.onset[selTop]),y:yOf(selTop)},b={x:xOf(S.onset[sel]),y:yOf(sel)};const my=(a.y+b.y)/2+Math.min(48,Math.abs(b.x-a.x)*.3)+18;
+    svg.appendChild(el('path',{d:`M${a.x},${a.y} Q${(a.x+b.x)/2},${my} ${b.x},${b.y}`,fill:'none',stroke:'var(--violet)','stroke-width':2.4,'stroke-dasharray':'2 5','stroke-linecap':'round',opacity:.95}));}
+  // nodes
+  let ni=0;
+  S.ids.forEach(i=>{
+    const x=xOf(S.onset[i]),y=yOf(i);const isSel=i===sel;
+    const cf=S.parentOf[i]!=null?(S.edges.find(e=>e.c===i)?.conf??.6):.75;
+    const faded=sel!=null&&!isSel&&i!==selPar&&i!==selTop;
+    const g=el('g',{class:'node',tabindex:0,role:'button','aria-label':'case '+i+', onset day '+S.onset[i].toFixed(0),transform:`translate(${x},${y})`});
+    const c=el('circle',{r:isSel?7:5,fill:isSel?'var(--violet)':conf2color(cf),stroke:'var(--panel)','stroke-width':1.5,opacity:faded?.45:1});
+    g.appendChild(c);
+    if(S.animate){g.classList.add('popin');g.style.animationDelay=(ni*10)+'ms';}
+    if(isSel){const t=el('text',{y:-12,'text-anchor':'middle','font-size':11,'font-weight':600,fill:'var(--violet)'});t.textContent='case '+i;g.appendChild(t);}
+    attachNode(g,i,c);
+    svg.appendChild(g);ni++;
+  });
+}
+function nodeTipHTML(i){const p=S.parentOf[i];const cand=candidates(i);const top=cand.length?cand[0]:null;
+  return `<b>case ${i}</b><br><span class="k">onset</span> day ${S.onset[i].toFixed(1)}`+
+    (p!=null?`<br><span class="k">documented infector</span> case ${p}`:`<br><span class="k">no documented infector</span>`)+
+    (top?`<br><span class="k">TemPrior top pick</span> case ${top.id} (${top.score.toFixed(2)})`:'');}
+
+let drag=null;
+function attachNode(g,i,circle){
+  g.addEventListener('pointerenter',ev=>{if(!drag)showTip(ev,nodeTipHTML(i));});
+  g.addEventListener('pointermove',ev=>{if(!drag)moveTip(ev);});
+  g.addEventListener('pointerleave',hideTip);
+  g.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();select(i);}});
+  g.addEventListener('pointerdown',ev=>{
+    ev.preventDefault();
+    const svg=document.getElementById('timeline');const rect=svg.getBoundingClientRect();
+    drag={id:i,moved:false,g};g.classList.add('dragging');g.setPointerCapture?.(ev.pointerId);
+    const move=e=>{
+      const sx=(e.clientX-rect.left)/rect.width*VB.W;const maxO=Math.max(1,...S.ids.map(k=>S.onset[k]));
+      let o=(sx-VB.padL)/(VB.W-VB.padL-VB.padR)*maxO;o=Math.max(0,Math.round(o*10)/10);
+      S.onset[i]=o;drag.moved=true;
+      hideTip();
+      if(!drag.raf)drag.raf=requestAnimationFrame(()=>{drag.raf=null;renderTimeline();if(S.selected===i){renderRanked();renderCurve();}});
+    };
+    const up=()=>{
+      window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);
+      g.classList.remove('dragging');
+      if(drag&&drag.moved){relayout();renderAll();}else{select(i);}
+      drag=null;
+    };
+    window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);
+  });
+}
+function select(i){S.selected=i;renderTimeline();renderRanked();renderCurve();document.getElementById('removeBtn').style.display=i==null?'none':'';}
+
+function renderRanked(){
+  const box=document.getElementById('ranked'),sub=document.getElementById('rank-sub');
+  if(S.selected==null){box.innerHTML='<p class="hint">Click a case above to see who TemPrior thinks infected it.</p>';sub.textContent='Select a case in the timeline.';return;}
+  const cand=candidates(S.selected),dp=S.parentOf[S.selected];
+  sub.textContent=`Case ${S.selected} · onset day ${S.onset[S.selected].toFixed(1)} · ${cand.length} admissible candidate${cand.length===1?'':'s'}`;
+  if(!cand.length){box.innerHTML='<p class="hint">No admissible earlier cases within the 1–60 day window.</p>';return;}
+  const max=cand[0].score;
+  const rows=cand.slice(0,7).map((x,idx)=>{const isT=x.id===dp;return `<div class="rrow ${S.animate?'animrow':''}" style="animation-delay:${idx*35}ms">
+    <div class="rk num">${idx+1}</div>
+    <div><div class="bar-label"><span class="who">case ${x.id}${isT?'<span class="truetag">documented</span>':''}</span><span class="score num">gap ${x.gap.toFixed(1)}d</span></div>
+    <div class="bar-track"><div class="bar-fill" style="width:${(x.score/max*100).toFixed(1)}%;${isT?'background:var(--violet)':''}"></div></div></div>
+    <div class="score num">${x.score.toFixed(3)}</div></div>`;}).join('');
+  const di=dp!=null?cand.findIndex(x=>x.id===dp):-1;
+  const note=di>=0?`<p class="sub" style="padding:10px 0 0">Documented infector (case ${dp}) ranked <b style="color:var(--ink)">#${di+1}</b> of ${cand.length}.</p>`:(dp!=null?`<p class="sub" style="padding:10px 0 0">Documented infector falls outside the timing window.</p>`:'');
+  box.innerHTML=rows+note;
+}
+function renderCurve(){
+  const svg=document.getElementById('curve');svg.innerHTML='';
+  const W=560,H=200,padL=34,padR=16,padT=16,padB=28;svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  const xmin=-10,xmax=60,xO=d=>padL+((d-xmin)/(xmax-xmin))*(W-padL-padR);
+  let pts=[],peak=0;for(let d=xmin;d<=xmax;d+=.5){const s=score(d);pts.push([d,s]);if(s>peak)peak=s;}
+  pts=pts.map(([d,s])=>[d,s/peak]);const yO=v=>padT+(1-v)*(H-padT-padB);
+  svg.appendChild(el('line',{x1:padL,y1:H-padB,x2:W-padR,y2:H-padB,stroke:'var(--line)','stroke-width':1}));
+  [0,20,40,60].forEach(d=>{const x=xO(d);const t=el('text',{x,y:H-padB+16,'text-anchor':'middle','font-size':10,fill:'var(--faint)'});t.textContent=d+'d';svg.appendChild(t);svg.appendChild(el('line',{x1:x,y1:H-padB,x2:x,y2:H-padB+4,stroke:'var(--faint)','stroke-width':1}));});
+  svg.appendChild(el('line',{x1:xO(0),y1:padT,x2:xO(0),y2:H-padB,stroke:'var(--line-soft)','stroke-width':1}));
+  let d='M'+pts.map(p=>xO(p[0])+','+yO(p[1])).join(' L');
+  svg.appendChild(el('path',{d:d+` L${xO(60)},${H-padB} L${xO(-10)},${H-padB} Z`,fill:'var(--teal)',opacity:.1}));
+  svg.appendChild(el('path',{d,fill:'none',stroke:'var(--teal)','stroke-width':2.4}));
+  const pk=20.5;svg.appendChild(el('line',{x1:xO(pk),y1:yO(1),x2:xO(pk),y2:H-padB,stroke:'var(--teal)','stroke-width':1,'stroke-dasharray':'3 3',opacity:.6}));
+  const pt=el('text',{x:xO(pk),y:yO(1)-6,'text-anchor':'middle','font-size':10,'font-weight':600,fill:'var(--teal-deep)'});pt.textContent='peak ~20.5d';svg.appendChild(pt);
+  if(S.selected!=null){const c=candidates(S.selected);if(c.length){const g=c[0].gap;if(g>=xmin&&g<=xmax){const x=xO(g);svg.appendChild(el('line',{x1:x,y1:padT+14,x2:x,y2:H-padB,stroke:'var(--violet)','stroke-width':1.5}));svg.appendChild(el('circle',{cx:x,cy:yO(score(g)/peak),r:4,fill:'var(--violet)'}));const tt=el('text',{x:Math.min(Math.max(x,padL+30),W-padR-46),y:H-padB-6,'text-anchor':'middle','font-size':10,'font-weight':600,fill:'var(--violet)'});tt.textContent='top pick '+g.toFixed(0)+'d';svg.appendChild(tt);}}}
+}
+function renderMetrics(){
+  const m=evaluate(score),gfn=gaussianScorer(),g=gfn?evaluate(gfn):null;
+  const box=document.getElementById('metrics'),cmp=document.getElementById('cmp');
+  if(!m){box.innerHTML='<p class="hint" style="grid-column:1/-1">Add documented links to score ranking accuracy.</p>';cmp.textContent='';return;}
+  box.innerHTML=[['MRR',m.mrr,1],['Top-1',m.t1,0],['Top-3',m.t3,0],['Top-5',m.t5,0]].map(([k,v,w])=>`<div class="metric ${w?'win':''}"><div class="v num">${v.toFixed(3)}</div><div class="k">${k}</div></div>`).join('');
+  if(g){const dm=m.mrr-g.mrr;cmp.innerHTML=`Across <b>${m.n}</b> documented link${m.n===1?'':'s'}. TemPrior MRR <b>${m.mrr.toFixed(3)}</b> vs. a Gaussian serial-interval baseline <b>${g.mrr.toFixed(3)}</b> — ${dm>=0?'+':''}${dm.toFixed(3)}. On a clean single-chain example the gap is small; TemPrior's edge widens across disease shift and in the 16–40&nbsp;day regime.`;}else{cmp.innerHTML=`Across <b>${m.n}</b> documented link${m.n===1?'':'s'}.`;}
+}
+function renderUncertainty(){
+  const bk={strict:0,preferred:0,plausible:0,unresolved:0};
+  S.edges.forEach(e=>{if(e.conf>=.8)bk.strict++;else if(e.conf>=.6)bk.preferred++;else if(e.conf>=.4)bk.plausible++;else bk.unresolved++;});
+  const segs=[['strict','var(--teal)',bk.strict],['preferred','#5aa06f',bk.preferred],['plausible','var(--amber)',bk.plausible],['unresolved','var(--coral)',bk.unresolved]];
+  document.getElementById('ustack').innerHTML=segs.map(([k,c,v])=>v?`<div class="useg" style="background:${c};flex:${v}">${v}</div>`:'').join('')||'<div class="useg" style="flex:1;background:var(--line-soft);color:var(--faint)">no links</div>';
+  document.getElementById('ukeys').innerHTML=segs.map(([k,c,v])=>`<div class="ukey"><span class="dot" style="background:${c}"></span>${k}<span class="n num">${v}</span></div>`).join('');
+  const off=thr=>{const o={};S.edges.forEach(e=>{if(e.conf>=thr)o[e.p]=(o[e.p]||0)+1;});return o;};
+  const so=off(.8),ao=off(.4);const top=(o,k)=>Object.entries(o).sort((a,b)=>b[1]-a[1]||(''+a[0]).localeCompare(''+b[0])).slice(0,k).map(x=>x[0]);
+  const st=top(so,5),aw=top(ao,5),sset=new Set(st),aset=new Set(aw),uni=new Set([...sset,...aset]);
+  const jac=uni.size?[...sset].filter(x=>aset.has(x)).length/uni.size:1;
+  const awB=aw.reduce((s,x)=>s+(ao[x]||0),0),cov=aw.filter(x=>sset.has(x)).reduce((s,x)=>s+(ao[x]||0),0);
+  document.getElementById('jac').textContent=jac.toFixed(3);
+  document.getElementById('reg').textContent=(awB?(1-cov/awB)*100:0).toFixed(1)+'%';
+  document.getElementById('slStrict').innerHTML=st.map(x=>`<span class="chip">case ${x}</span>`).join('')||'<span class="sub">none</span>';
+  document.getElementById('slAware').innerHTML=aw.map(x=>`<span class="chip ${sset.has(x)?'':'new'}">case ${x}</span>`).join('')||'<span class="sub">none</span>';
+}
+function renderAll(){renderTimeline();renderRanked();renderCurve();renderMetrics();renderUncertainty();document.getElementById('removeBtn').style.display=S.selected==null?'none':'';}
+
+// tooltip
+const tip=document.getElementById('tip');
+function showTip(ev,html){tip.innerHTML=html;tip.classList.add('show');moveTip(ev);}
+function moveTip(ev){const x=ev.clientX,y=ev.clientY;tip.style.left=Math.min(x+14,window.innerWidth-tip.offsetWidth-8)+'px';tip.style.top=Math.max(8,y-tip.offsetHeight-10)+'px';}
+function hideTip(){tip.classList.remove('show');}
+
+// editor
+const editor=document.getElementById('editor');
+function refreshParentOptions(){const sel=document.getElementById('edParent');const cur=sel.value;sel.innerHTML='<option value="">— none —</option>'+S.ids.slice().sort((a,b)=>S.onset[a]-S.onset[b]).map(i=>`<option value="${i}">case ${i} (day ${S.onset[i].toFixed(0)})</option>`).join('');sel.value=cur;}
+document.getElementById('addToggle').addEventListener('click',e=>{editor.classList.toggle('open');e.currentTarget.classList.toggle('on',editor.classList.contains('open'));if(editor.classList.contains('open'))refreshParentOptions();});
+document.getElementById('edCancel').addEventListener('click',()=>{editor.classList.remove('open');document.getElementById('addToggle').classList.remove('on');});
+document.getElementById('edConf').addEventListener('input',e=>document.getElementById('edConfV').textContent=(+e.target.value).toFixed(2));
+document.getElementById('edAdd').addEventListener('click',()=>{
+  const onset=+document.getElementById('edOnset').value;if(isNaN(onset)){return;}
+  const nid=(S.ids.length?Math.max(...S.ids.map(Number))+1:0);
+  S.onset[nid]=onset;S.ids.push(nid);
+  const par=document.getElementById('edParent').value;
+  if(par!==''){const conf=+document.getElementById('edConf').value;S.edges.push({p:+par,c:nid,conf});S.parentOf[nid]=+par;}
+  relayout();S.selected=nid;renderAll();refreshParentOptions();
+  editor.classList.remove('open');document.getElementById('addToggle').classList.remove('on');
+});
+document.getElementById('removeBtn').addEventListener('click',()=>{const i=S.selected;if(i==null)return;
+  S.ids=S.ids.filter(x=>x!==i);delete S.onset[i];delete S.parentOf[i];
+  S.edges=S.edges.filter(e=>e.p!==i&&e.c!==i);
+  Object.keys(S.parentOf).forEach(c=>{if(S.parentOf[c]===i)delete S.parentOf[c];});
+  S.selected=null;relayout();renderAll();refreshParentOptions();
+});
+
+// filter
+const filter=document.getElementById('filter');
+filter.addEventListener('input',e=>{S.filter=+e.target.value;document.getElementById('filterV').textContent=S.filter.toFixed(2);renderTimeline();});
+
+// upload (robust: single combined handler, edges optional)
+function parseCSV(txt){const lines=txt.replace(/\r/g,'').trim().split('\n');if(!lines.length)return[];const head=lines[0].split(',').map(s=>s.trim().toLowerCase());return lines.slice(1).filter(l=>l.trim()).map(l=>{const c=l.split(',');const o={};head.forEach((h,i)=>o[h]=(c[i]??'').trim());return o;});}
+let pendingLL=null;
+document.getElementById('uploadBtn').addEventListener('click',()=>{pendingLL=null;document.getElementById('fileLine').value='';document.getElementById('fileLine').click();});
+document.getElementById('fileLine').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=()=>{try{
+    const rows=parseCSV(r.result);let base=null;
+    const parsed=rows.map(x=>{const raw=x.onset;const v=parseFloat(raw);if(isNaN(v)){const d=Date.parse(raw);if(!isNaN(d)){base=base==null?d:Math.min(base,d);return{id:x.case_id,raw:d,date:true};}return null;}return{id:x.case_id,raw:v,date:false};}).filter(Boolean);
+    pendingLL=parsed.map(p=>p.date?[p.id,(p.raw-base)/86400000]:[p.id,p.raw]).filter(r=>r[0]!==''&&!isNaN(r[1]));
+    if(!pendingLL.length){alert('No valid rows found. Expected columns: case_id, onset.');return;}
+    document.getElementById('fileEdge').value='';document.getElementById('fileEdge').click();
+  }catch(err){alert('Could not read the line list CSV.');}};
+  r.readAsText(f);
+});
+document.getElementById('fileEdge').addEventListener('change',e=>{
+  const f=e.target.files[0];
+  if(!f){loadData(pendingLL,[],true);return;}          // edges optional — no double-load
+  const r=new FileReader();
+  r.onload=()=>{try{const rows=parseCSV(r.result);const ed=rows.map(x=>[x.parent_id,x.child_id,(x.confidence!==undefined&&x.confidence!=='')?parseFloat(x.confidence):(String(x.high_confidence).toLowerCase()==='true'?1:1)]).filter(r=>r[0]!==''&&r[1]!=='');loadData(pendingLL,ed,true);}catch(err){loadData(pendingLL,[],true);}};
+  r.readAsText(f);
+});
+document.getElementById('loadExample').addEventListener('click',()=>loadData(EX_LL,EX_ED,true));
+document.getElementById('copyPip').addEventListener('click',()=>{navigator.clipboard&&navigator.clipboard.writeText('pip install temprior').then(()=>{const b=document.getElementById('copyPip');b.textContent='copied';setTimeout(()=>b.textContent='copy',1500);});});
+window.addEventListener('resize',()=>{if(!drag){renderTimeline();}});
+
+loadData(EX_LL,EX_ED,true);
+</script>
+</body>
+</html>
