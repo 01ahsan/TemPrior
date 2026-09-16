@@ -12,6 +12,14 @@
 [![Live demo](https://img.shields.io/badge/demo-run%20in%20browser-2bb597.svg)](https://01ahsan.github.io/TemPrior)
 
 
+<br>
+
+![TemPrior: a learned temporal prior, and its accuracy on real Andes-virus outbreak data](assets/hero.png)
+
+</div>
+
+
+
 At the start of an outbreak, contact tracers need to know who infected whom — but genome sequencing takes days and needs multiple high-quality sequences per case, which are often unavailable. TemPrior recovers the transmission chain from case **timing** alone.
 
 The method learns a temporal prior over serial intervals from many past outbreaks, **locks it before it ever sees the target outbreak**, and ranks each case's most likely infector zero-shot. Unlike parametric serial-interval methods, it is not committed to a Gaussian or Gamma shape; and unlike most reconstruction tools, it treats epidemiological links as what they are — uncertain — and quantifies how that uncertainty shifts the cases you would prioritise for isolation.
